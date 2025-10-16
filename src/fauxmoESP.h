@@ -116,6 +116,14 @@ class fauxmoESP {
         AsyncServer * _server;
         bool _enabled = false;
         bool _internal = true;
+        // New additions for non-blocking delay based on MX value
+        unsigned long _delayStart = 0;
+        unsigned int _randomDelay = 0;
+        bool _isDelayed = false;
+
+        IPAddress _udpRequestIP;
+        uint16_t _updRequestPort;
+        // 
         unsigned int _tcp_port = FAUXMO_TCP_PORT;
         std::vector<fauxmoesp_device_t> _devices;
 		#ifdef ESP8266
@@ -128,6 +136,9 @@ class fauxmoESP {
 
         String _deviceJson(unsigned char id, bool all); 	// all = true means we are listing all devices so use full description template
 
+        // Helper method to handle the non-blocking delay
+        void _handleUDPDelay();
+        
         void _handleUDP();
         void _onUDPData(const IPAddress remoteIP, unsigned int remotePort, void *data, size_t len);
         void _sendUDPResponse();
