@@ -52,10 +52,10 @@ void fauxmoESP::_sendUDPResponse() {
     );
 
 	#if DEBUG_FAUXMO_VERBOSE_UDP
-    	DEBUG_MSG_FAUXMO("[FAUXMO] UDP response sent to %s:%d\n%s", _udp.remoteIP().toString().c_str(), _udp.remotePort(), response);
+    	DEBUG_MSG_FAUXMO("[FAUXMO] UDP response sent to %s:%d\n%s", _udpRequestIP.toString().c_str(), _updRequestPort, response);
 	#endif
 
-    _udp.beginPacket(_udp.remoteIP(), _udp.remotePort());
+    _udp.beginPacket(_udpRequestIP, _updRequestPort);
 	#if defined(ESP32)
 	    _udp.printf(response);
 	#else
@@ -81,13 +81,57 @@ void fauxmoESP::_handleUDP() {
         String request = (const char *) data;
         if (request.indexOf("M-SEARCH") >= 0) {
             if ((request.indexOf("ssdp:discover") > 0) || (request.indexOf("upnp:rootdevice") > 0) || (request.indexOf("device:basic:1") > 0)) {
-                _sendUDPResponse();
+                // Retrieve MX value from the packet
+                    
+						  if (!_isDelayed) { // can only handle one queued MX response
+
+								randomSeed(millis());
+								int mxValue = 0;
+								int mxIndex = request.indexOf("MX:");
+								if (mxIndex >= 0) {
+										String mxString = request.substring(mxIndex + 4);
+										mxValue = mxString.toInt();
+								}
+
+								// Generate a random delay between 0 and MX seconds (convert to milliseconds)
+								_randomDelay = (mxValue > 0) ? random(0, mxValue * 1000) : random(0, 1000);
+								_delayStart = millis();
+								_isDelayed = true;
+
+								_udpRequestIP = _udp.remoteIP();
+								_updRequestPort = _udp.remotePort();
+						  }
+
+                    // Log the delay
+						  #if DEBUG_FAUXMO_VERBOSE_UDP
+			               DEBUG_MSG_FAUXMO("[FAUXMO] M-SEARCH received. Delaying response for %d ms.\n", _randomDelay);
+		              #endif
+
+                    // The actual _sendUDPResponse will be sent from _handleUDPDelay()
+                    return;
+					// _sendUDPResponse();
             }
         }
     }
 
 }
+// New method to handle the non-blocking delay
+void fauxmoESP::_handleUDPDelay() {
+    if (_isDelayed) {
+        if ((millis() - _delayStart) >= _randomDelay) {
+			   #if DEBUG_FAUXMO_VERBOSE_UDP
+			       DEBUG_MSG_FAUXMO("[FAUXMO] Non-blocking delay finished. Sending UDP response.\n")
+		      #endif
 
+            // Call the function that sends the UDP response
+            _sendUDPResponse();
+
+            // Reset the state
+            _isDelayed = false;
+            _randomDelay = 0;
+        }
+    }
+}
 
 // -----------------------------------------------------------------------------
 // TCP
